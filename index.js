@@ -42,8 +42,8 @@ async function main() {
     name: name || 'unify-site',
     type: 'module',
     scripts: {
-      build: `npx @fwdslsh/unify build ${inputDir} ${outputDir} --layouts ${layoutDir} --components ${componentDir}`,
-      serve: `npx @fwdslsh/unify serve ${outputDir}`
+      build: `npx @fwdslsh/unify build --source ${inputDir} --output ${outputDir} --layouts ${layoutDir.replace(inputDir + '/', '')} --components ${componentDir.replace(inputDir + '/', '')}`,
+      serve: `npx @fwdslsh/unify serve --output ${outputDir}`
     }
   };
   await writeFile(pkgPath, JSON.stringify(pkgJson, null, 2), 'utf-8');
