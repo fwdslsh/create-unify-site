@@ -3,11 +3,9 @@
 import { fileURLToPath } from 'url';
 import path from 'path';
 import readline from 'readline/promises';
-import { mkdir, copyFile, readdir, stat, writeFile, rmdir } from 'fs/promises';
-import { createWriteStream } from 'fs';
+import { mkdir, copyFile, readdir, writeFile } from 'fs/promises';
 import https from 'https';
 import * as tar from 'tar';
-import { tmpdir } from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -197,11 +195,8 @@ async function downloadAndExtract(url, extractDir) {
       response
         .pipe(tar.extract({
           cwd: extractDir,
-          strip: 1, // Remove the top-level directory
-          filter: (path) => {
-            // Only extract src/ directory contents
-            return path.includes('/src/');
-          },
+          strip: 1,
+          filter: (path) => path.includes('/src/'),
           map: (header) => {
             // Remap paths to remove the /src prefix
             if (header.path.includes('/src/')) {
@@ -212,6 +207,36 @@ async function downloadAndExtract(url, extractDir) {
         }))
         .on('finish', resolve)
         .on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+// Get the latest release version of @fwdslsh/unify from GitHub
+async function getLatestUnifyVersion() {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'create-unify-site',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    };
+    https.get('https://api.github.com/repos/fwdslsh/unify/releases/latest', options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          try {
+            const json = JSON.parse(data);
+            // Remove leading 'v' if present
+            const version = json.tag_name.startsWith('v') ? json.tag_name.slice(1) : json.tag_name;
+            resolve(version);
+          } catch (e) {
+            reject(e);
+          }
+        } else {
+          reject(new Error('Failed to fetch latest release'));
+        }
+      });
     }).on('error', reject);
   });
 }
@@ -256,11 +281,11 @@ async function main() {
 
   const targetDir = path.resolve(process.cwd(), name || 'unify-site');
   const srcDir = path.join(targetDir, inputDir);
-  
+
   // Create target directory structure
   await mkdir(srcDir, { recursive: true });
   await mkdir(path.join(targetDir, outputDir), { recursive: true });
-  
+
   // Try to download from unify-starter repository, fallback to local files
   try {
     console.log('📥 Downloading unify-starter template...');
@@ -271,10 +296,18 @@ async function main() {
     await createFallbackFiles(srcDir);
   }
 
+  // Get latest unify version
+  let unifyVersion = '^0.4.3';
+  try {
+    unifyVersion = '^' + await getLatestUnifyVersion();
+  } catch (e) {
+    console.log('⚠ Could not fetch latest unify version, using default:', unifyVersion);
+  }
+
   const pkgPath = path.join(targetDir, 'package.json');
   const pkgJson = {
     name: name || 'unify-site',
-    version: '1.0.0',
+    version: '0.0.1',
     description: 'A static site built with Unify',
     type: 'module',
     scripts: {
@@ -283,7 +316,7 @@ async function main() {
       serve: `npx @fwdslsh/unify serve --output ${outputDir}`
     },
     devDependencies: {
-      '@fwdslsh/unify': '^0.4.3'
+      '@fwdslsh/unify': unifyVersion
     },
     keywords: ['unify', 'static-site-generator', 'starter-kit']
   };
